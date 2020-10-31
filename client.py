@@ -8,7 +8,7 @@ serverSocket = socket(AF_INET,SOCK_STREAM)
 serverSocket.connect(('127.0.0.1',80))
 
 control = ['ASK']
-status = ['JOB_COMPLETED','ERROR']
+status = ['JOB_COMPLETED']
 
 def response(serverSocket,msgRecv):
     jobType = msgRecv.jobType
