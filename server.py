@@ -8,7 +8,7 @@ from random import *
 
 serverPort = 80
 serverSocket = socket(AF_INET,SOCK_STREAM)
-serverSocket.bind(('',serverPort))
+serverSocket.bind(('0.0.0.0',serverPort))
 serverSocket.listen(10)
 
 NUMBER_OF_THREADS = 2
@@ -17,8 +17,19 @@ queue =Queue()
 connectedJS = []     #keep track of all connected jobseekers(socket object)
 allAddress = []      #keep track of ip address of all job seekers
 
+#to be used for user inputs
+IP = ''
+Port = 0
+hostname = ''
+
+#open file to write output from job seeker
+f = open('output.txt', "w")
+
+#to store hops between each client and host
+hop = []
+
 signal = ['JOB_SENT']
-jobs = ['IS_HOST_ONLINE','PORT_STATUS','TCP_ATTACK','UDP_ATTACK']
+jobs = ['IS_HOST_ONLINE','PORT_STATUS','TCP_ATTACK','UDP_ATTACK','TRACERT','MAC_IP']
 
 
 def acceptConnections():
@@ -37,6 +48,7 @@ def acceptConnections():
 
 def sendJobs():
         while True:
+
             if len(connectedJS)<=0: #initially there will not be any connection so we cannot proceed further
                time.sleep(2)
                continue
@@ -59,31 +71,45 @@ def sendJobs():
 
 
             selectedJS =[]
-            n = int(input("Enter number of jobseekers you want to send job to : "))# all the js's that server want to send job to
+            n = int(input("Enter number of jobseekers you want to send job to : "))# all the jobseekers's that server want to send job to
             print('Enter their number:')
             for i in range(0,n):#actual job seeker numbers will be stored in list selectedJS
                 selectedJS.append(int(input()))
 
-            if(len(selectedJS)>1):
-                print("What job you want job seeker to perform \n3.TCP_ATTACK \n 4.UDP_ATTACK" )
+            if(len(selectedJS)>1):#multiple job seekers
+                global hop
+                print("What job you want job seeker to perform \n1. IS_HOST_ONLINE \n2. PORT_STATUS\n3.TCP_ATTACK \n4.UDP_ATTACK \n5.TRACERT \n6.MAC_IP\n>>>>" )
                 jobNumber=int(input())-1
-                print('Please Enter IP:')
-                IP = input()
-                print('Please Enter PortNumber:')
-                Port = input()
-                for i in range(0,n):#sending jobs to all job seekers in list
-                    print(f'<CLIENT {i+1}>')
+                user_input(jobNumber)# input required information
+                threads = []
+                for i in range(0,n):#sending jobs to all job seekers in list using multithreading
+                    print(f'<CLIENT {selectedJS[i]}>')
                     msgRecieved = connectedJS[selectedJS[i]-1].recv(1024)
                     data = pickle.loads(msgRecieved)
                     print('****JOB REQUEST FROM CLIENT****')
                     print(data)
                     print('\n')
-                    processReqMulti(data,selectedJS[i],jobNumber,IP,Port)#assigning job to job seeker
-            else :
+                    threads.append(threading.Thread(target=processReq,args=(data,selectedJS[i],jobNumber)))
+                for i in range(0,n):
+                    threads[i].start()
+                for i in range(0,n):
+                    threads[i].join()
+
+                if(jobNumber==4):
+                    closest_hop = 30
+                    closest_client_number = ''
+                    for h in hop:#comparing no of hops returned by job seekers to check which one is closest to destination
+                        if int(h['hops'])<closest_hop:
+                            closest_hop = int(h['hops'])
+                            closest_client_number = h['jobSeeker']
+                    print(f'\nJOB SEEKER #{closest_client_number} IS CLOSEST TO HOST WITH {closest_hop} HOPS ')
+
+            else :#single job seeker
                 msgRecieved = connectedJS[selectedJS[i]-1].recv(1024)
                 data = pickle.loads(msgRecieved)
-                print("What job you want job seeker to perform \n 1. IS_HOST_ONLINE \n 2. PORT_STATUS")
-                jobNumber=int(input())-1
+                print("What job you want job seeker to perform\n1. IS_HOST_ONLINE \n2. PORT_STATUS\n3.TCP_ATTACK \n4.UDP_ATTACK \n5.TRACERT \n6.MAC_IP\n")
+                jobNumber=int(input('>>>>'))-1
+                user_input(jobNumber)
                 processReq(data,selectedJS[i],jobNumber)#assigning job to job seeker
 
             for i in range(0,n):#closing and deleting connection to which job is sent.
@@ -91,38 +117,48 @@ def sendJobs():
                 del connectedJS[selectedJS[i]-1]
                 del allAddress[selectedJS[i]-1]
 
-def processReq(data,selectedJS,jobNumber):#assigning random job to job seeker
+            f.close()
+
+def processReq(data,selectedJS,jobNumber):#assigning  job to job seeker
+    global hop,f
+    if f.closed:
+        f = open('output.txt', "a")
     header = data.jobHeader
     if header == 'ASK':
-        print('Please Enter IP:')
-        IP = input()
         if(jobNumber == 0):
             x = ServerData(signal[0],jobs[jobNumber],[IP])
-        else:
-            print('Please Enter PortNumber:')
-            Port = input()
+        elif(jobNumber == 1 or jobNumber == 2 or jobNumber == 3 ):
             x = ServerData(signal[0],jobs[jobNumber],[IP,Port])
-
+        elif(jobNumber == 4):
+            x = ServerData(signal[0],jobs[jobNumber],[hostname])
+        elif(jobNumber == 5):
+            x = ServerData(signal[0],jobs[jobNumber],[])
         x.msgSize = sys.getsizeof(pickle.dumps(x))
         connectedJS[selectedJS-1].send(pickle.dumps(x))
         result = pickle.loads(connectedJS[selectedJS-1].recv(1024))
-        print('****RESULT FROM CLIENT****')
+        print(f'\n\n****RESULT****')
+        result.jobHeader=result.jobHeader+(f'\tClient #{selectedJS}')
         print(result)
-        print('\n')
+        f.write(result.__str__())
+        if(jobNumber==4):#adding no of hops between job seeker and host to hop array
+            hop.append({'jobSeeker' : selectedJS,'hops':result.jobResult})
         connectedJS[selectedJS-1].close()
 
-def processReqMulti(data,selectedJS,jobNumber,IP,Port):#assigning random job to job seeker
-    header = data.jobHeader
-    if header == 'ASK':
-        x = ServerData(signal[0],jobs[jobNumber],[IP,Port])
-        x.msgSize = sys.getsizeof(pickle.dumps(x))
-        connectedJS[selectedJS-1].send(pickle.dumps(x))
-        result = pickle.loads(connectedJS[selectedJS-1].recv(1024))
-        print('****RESULT FROM CLIENT****')
-        print(result)
-        print('\n')
-        connectedJS[selectedJS-1].close()
-
+def user_input(jobNumber):
+    global IP
+    global Port
+    global hostname
+    if(jobNumber == 0):
+        print('Please Enter IP:')
+        IP = input()
+    elif(jobNumber == 1 or jobNumber == 2 or jobNumber == 3 ):
+        print('Please Enter IP:')
+        IP = input()
+        print('Please Enter PortNumber:')
+        Port = input()
+    elif(jobNumber == 4):
+        print('Please Enter hostname:')
+        hostname = input()
 #multi threading for handling connections as well as sending data to connections simultaneously
 def createThreads():
     for a in range(NUMBER_OF_THREADS):
